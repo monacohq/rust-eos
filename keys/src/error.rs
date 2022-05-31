@@ -1,6 +1,6 @@
+use crate::base58;
 use alloc::string::ToString;
 use core::fmt;
-use crate::base58;
 
 pub type Result<T> = core::result::Result<T, Error>;
 
@@ -8,8 +8,8 @@ pub type Result<T> = core::result::Result<T, Error>;
 pub enum Error {
     /// Base58 encoding error
     Base58(base58::Error),
-    /// secp256k1-related error
-    Secp256k1(secp256k1::Error),
+    /// libsecp256k1-related error
+    Secp256k1(libsecp256k1::Error),
     /// hash error
     Hash(bitcoin_hashes::error::Error),
     /// verify failed
@@ -54,8 +54,8 @@ impl From<base58::Error> for Error {
     }
 }
 
-impl From<secp256k1::Error> for Error {
-    fn from(e: secp256k1::Error) -> Error {
+impl From<libsecp256k1::Error> for Error {
+    fn from(e: libsecp256k1::Error) -> Error {
         Error::Secp256k1(e)
     }
 }

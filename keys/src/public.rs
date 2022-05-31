@@ -1,13 +1,13 @@
-use alloc::vec::Vec;
-use alloc::string::String;
+use crate::base58;
+use crate::constant::*;
+use crate::secret::SecretKey;
+use crate::signature::Signature;
+use crate::{error, hash};
 use alloc::format;
+use alloc::string::String;
+use alloc::vec::Vec;
 use bitcoin_hashes::{sha256, Hash as HashTrait};
 use core::{fmt, str::FromStr};
-use crate::constant::*;
-use crate::{error, hash};
-use crate::secret::SecretKey;
-use crate::base58;
-use crate::signature::Signature;
 
 /// A Secp256k1 public key
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -15,11 +15,10 @@ pub struct PublicKey {
     /// Whether this public key should be serialized as compressed
     pub compressed: bool,
     /// The actual Secp256k1 key
-    pub key: secp256k1::PublicKey,
+    pub key: libsecp256k1::PublicKey,
 }
 
 impl PublicKey {
-
     /// Serialize the public key to bytes
     pub fn to_bytes(&self) -> Vec<u8> {
         if self.compressed {
@@ -47,8 +46,8 @@ impl PublicKey {
 
     /// Verify a signature on a hash with public key.
     pub fn verify_hash(&self, hash: &[u8], signature: &Signature) -> crate::Result<()> {
-        let msg = secp256k1::Message::parse_slice(&hash)?;
-        match secp256k1::verify(&msg, &signature.sig, &self.key) {
+        let msg = libsecp256k1::Message::parse_slice(&hash)?;
+        match libsecp256k1::verify(&msg, &signature.sig, &self.key) {
             true => Ok(()),
             false => Err(crate::error::Error::VerifyFailed),
         }
@@ -59,12 +58,17 @@ impl PublicKey {
         let compressed: bool = match data.len() {
             PUBLIC_KEY_SIZE => true,
             UNCOMPRESSED_PUBLIC_KEY_SIZE => false,
-            len => { return Err(base58::Error::InvalidLength(len).into()); }
+            len => {
+                return Err(base58::Error::InvalidLength(len).into());
+            }
         };
 
         Ok(PublicKey {
             compressed,
-            key: secp256k1::PublicKey::parse_slice(&data, Some(secp256k1::PublicKeyFormat::Compressed))?,
+            key: libsecp256k1::PublicKey::parse_slice(
+                &data,
+                Some(libsecp256k1::PublicKeyFormat::Compressed),
+            )?,
         })
     }
 }
@@ -87,27 +91,30 @@ impl FromStr for PublicKey {
     type Err = error::Error;
     fn from_str(s: &str) -> crate::Result<PublicKey> {
         if !s.starts_with("EOS") {
-            return Err(secp256k1::Error::InvalidPublicKey.into());
+            return Err(libsecp256k1::Error::InvalidPublicKey.into());
         }
 
         let s_hex = base58::from(&s[3..])?;
         let format = match s_hex.len() {
-            PUBLIC_KEY_WITH_CHECKSUM_SIZE => secp256k1::PublicKeyFormat::Compressed,
-            _ => secp256k1::PublicKeyFormat::Full,
+            PUBLIC_KEY_WITH_CHECKSUM_SIZE => libsecp256k1::PublicKeyFormat::Compressed,
+            _ => libsecp256k1::PublicKeyFormat::Full,
         };
         let raw = &s_hex[..PUBLIC_KEY_SIZE];
         // TODO verify with checksum
         let _checksum = &s_hex[PUBLIC_KEY_SIZE..];
-        let key = secp256k1::PublicKey::parse_slice(&raw, Some(format))?;
+        let key = libsecp256k1::PublicKey::parse_slice(&raw, Some(format))?;
 
-        Ok(PublicKey { key, compressed: true })
+        Ok(PublicKey {
+            key,
+            compressed: true,
+        })
     }
 }
 
 impl<'a> From<&'a SecretKey> for PublicKey {
     /// Derive this public key from its corresponding `SecretKey`.
     fn from(sk: &SecretKey) -> PublicKey {
-        let pk = secp256k1::PublicKey::from_secret_key(&sk.key);
+        let pk = libsecp256k1::PublicKey::from_secret_key(&sk.key);
 
         PublicKey {
             compressed: true,
@@ -119,11 +126,11 @@ impl<'a> From<&'a SecretKey> for PublicKey {
 #[cfg(test)]
 mod test {
     use super::PublicKey;
-    use core::str::FromStr;
     use crate::error;
     use crate::signature::Signature;
-    use secp256k1;
     use alloc::string::ToString;
+    use core::str::FromStr;
+    use libsecp256k1;
 
     #[test]
     fn pk_from_str_should_work() {
@@ -138,7 +145,10 @@ mod test {
         let pk_str = "8FdQ4gt16pFcSiXAYCcHnkHTS2nNLFWGZXW5sioAdvQuMxKhAm";
         let pk = PublicKey::from_str(pk_str);
         assert!(pk.is_err());
-        assert_eq!(pk.unwrap_err(), error::Error::Secp256k1(secp256k1::Error::InvalidPublicKey));
+        assert_eq!(
+            pk.unwrap_err(),
+            error::Error::Secp256k1(libsecp256k1::Error::InvalidPublicKey)
+        );
     }
 
     #[test]

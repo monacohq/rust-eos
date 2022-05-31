@@ -1,13 +1,13 @@
+use crate::{base58, error, hash};
+use byteorder::{ByteOrder, LittleEndian};
 use core::fmt;
 use core::str::FromStr;
-use crate::{base58, hash, error};
-use byteorder::{ByteOrder, LittleEndian};
 
-/// An secp256k1 signature.
+/// An libsecp256k1 signature.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Signature {
-    pub recv_id: secp256k1::RecoveryId,
-    pub sig: secp256k1::Signature,
+    pub recv_id: libsecp256k1::RecoveryId,
+    pub sig: libsecp256k1::Signature,
 }
 
 impl Signature {
@@ -23,17 +23,10 @@ impl Signature {
     }
 
     pub fn from_compact(data: &[u8; 65]) -> crate::Result<Self> {
-        let recv_id = if data[0] >= 31 {
-            data[0] - 4
-        } else {
-            data[0]
-        };
-        let recv_id = secp256k1::RecoveryId::parse_rpc(recv_id)?;
-        let sig = secp256k1::Signature::parse_slice(&data[1..])?;
-        Ok(Self {
-            recv_id,
-            sig,
-        })
+        let recv_id = if data[0] >= 31 { data[0] - 4 } else { data[0] };
+        let recv_id = libsecp256k1::RecoveryId::parse_rpc(recv_id)?;
+        let sig = libsecp256k1::Signature::parse_standard_slice(&data[1..])?;
+        Ok(Self { recv_id, sig })
     }
 }
 
@@ -42,7 +35,7 @@ impl FromStr for Signature {
 
     fn from_str(s: &str) -> crate::Result<Signature> {
         if !s.starts_with("SIG_K1_") {
-            return Err(secp256k1::Error::InvalidSignature.into());
+            return Err(libsecp256k1::Error::InvalidSignature.into());
         }
 
         let s_hex = base58::from(&s[7..])?;
@@ -50,14 +43,14 @@ impl FromStr for Signature {
         // signature length: 64
         // checksum length: 4
         if s_hex.len() != 1 + 64 + 4 {
-            return Err(secp256k1::Error::InvalidSignature.into());
+            return Err(libsecp256k1::Error::InvalidSignature.into());
         }
         let mut recv_id = s_hex[0];
         if recv_id >= 4 + 27 {
             recv_id = recv_id - 4 - 27
         }
-        let recv_id = secp256k1::RecoveryId::parse(recv_id)
-            .map_err(|err| error::Error::Secp256k1(err))?;
+        let recv_id =
+            libsecp256k1::RecoveryId::parse(recv_id).map_err(|err| error::Error::Secp256k1(err))?;
         let data = &s_hex[1..65];
 
         // Verify checksum
@@ -70,13 +63,10 @@ impl FromStr for Signature {
             return Err(base58::Error::BadChecksum(expected, actual).into());
         }
 
-        let sig = secp256k1::Signature::parse_slice(data)
+        let sig = libsecp256k1::Signature::parse_standard_slice(data)
             .map_err(|err| error::Error::Secp256k1(err))?;
 
-        Ok(Signature {
-            recv_id,
-            sig
-        })
+        Ok(Signature { recv_id, sig })
     }
 }
 
@@ -110,8 +100,8 @@ impl fmt::Display for Signature {
 #[cfg(test)]
 mod test {
     use super::Signature;
-    use core::str::FromStr;
     use alloc::string::ToString;
+    use core::str::FromStr;
 
     #[test]
     fn sig_from_str_should_work() {

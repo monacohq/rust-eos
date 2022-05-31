@@ -1,18 +1,18 @@
 //! <https://github.com/EOSIO/eosio.cdt/blob/4985359a30da1f883418b7133593f835927b8046/libraries/eosiolib/core/eosio/crypto.hpp#L22-L48>
+use crate::{NumBytes, Read, Signature, UnsignedInt, Write};
 use alloc::string::ToString;
-use crate::{NumBytes, Read, UnsignedInt, Write, Signature};
+use codec::{Decode, Encode};
 use core::{
     convert::{TryFrom, TryInto},
-    fmt, marker::PhantomData,
-    str::FromStr
+    fmt,
+    marker::PhantomData,
+    str::FromStr,
 };
-use codec::{Encode, Decode};
 #[cfg(feature = "std")]
 use serde::{
-    Deserialize,
-    Deserializer,
     de::{self, Visitor},
     ser::{Serialize, Serializer},
+    Deserialize, Deserializer,
 };
 
 /// EOSIO Public Key
@@ -29,17 +29,18 @@ pub struct PublicKey {
 #[cfg(feature = "std")]
 impl Serialize for PublicKey {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-        where
-            S: Serializer,
+    where
+        S: Serializer,
     {
         serializer.serialize_str(&self.to_string())
     }
 }
 
 #[cfg(feature = "std")]
-impl<'de>serde::Deserialize<'de> for PublicKey {
+impl<'de> serde::Deserialize<'de> for PublicKey {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-        where D: serde::de::Deserializer<'de>
+    where
+        D: serde::de::Deserializer<'de>,
     {
         struct VisitorPublicKey;
         impl<'de> serde::de::Visitor<'de> for VisitorPublicKey {
@@ -49,7 +50,10 @@ impl<'de>serde::Deserialize<'de> for PublicKey {
                 formatter.write_str("error is here")
             }
 
-            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E> where E: serde::de::Error {
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
                 Ok(PublicKey::from_str(v).map_err(|_| E::custom("failed to parse public key."))?)
             }
         }
@@ -69,7 +73,8 @@ impl PublicKey {
     pub fn verify(&self, hash: &[u8], signature: &Signature) -> crate::Result<()> {
         let keys = keys::public::PublicKey::try_from(self.clone())?;
         let sig: &keys::signature::Signature = &signature.clone().try_into()?;
-        keys.verify_hash(hash, sig).map_err(crate::Error::VerificationError)
+        keys.verify_hash(hash, sig)
+            .map_err(crate::Error::VerificationError)
     }
 }
 
@@ -99,15 +104,15 @@ impl FromStr for PublicKey {
 
 #[cfg(feature = "std")]
 pub(crate) fn string_to_public_key<'de, T, D>(deserializer: D) -> Result<T, D::Error>
-    where
-        T: Deserialize<'de> + FromStr<Err = crate::error::Error>,
-        D: Deserializer<'de>,
+where
+    T: Deserialize<'de> + FromStr<Err = crate::error::Error>,
+    D: Deserializer<'de>,
 {
     struct StringToPublicKey<T>(PhantomData<fn() -> T>);
 
     impl<'de, T> Visitor<'de> for StringToPublicKey<T>
-        where
-            T: Deserialize<'de> + FromStr<Err = crate::error::Error>,
+    where
+        T: Deserialize<'de> + FromStr<Err = crate::error::Error>,
     {
         type Value = T;
         fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
@@ -115,10 +120,11 @@ pub(crate) fn string_to_public_key<'de, T, D>(deserializer: D) -> Result<T, D::E
         }
 
         fn visit_str<E>(self, value: &str) -> Result<T, E>
-            where
-                E: de::Error,
+        where
+            E: de::Error,
         {
-            Ok(FromStr::from_str(value).map_err(|_| E::custom("public_key deserialization error."))?)
+            Ok(FromStr::from_str(value)
+                .map_err(|_| E::custom("public_key deserialization error."))?)
         }
     }
     deserializer.deserialize_any(StringToPublicKey(PhantomData))
@@ -158,9 +164,9 @@ impl core::fmt::Display for PublicKey {
 
 #[cfg(test)]
 mod test {
+    use super::*;
     use core::convert::TryFrom;
     use core::str::FromStr;
-    use super::*;
 
     #[test]
     fn generate_public_key_from_key_str() {
@@ -178,7 +184,7 @@ mod test {
     }
 
     #[test]
-    fn generate_public_key_from_secp256k1_public_key() {
+    fn generate_public_key_from_libsecp256k1_public_key() {
         let sig_key = "EOS8FdQ4gt16pFcSiXAYCcHnkHTS2nNLFWGZXW5sioAdvQuMxKhAm";
         let secp_pk = keys::public::PublicKey::from_str(sig_key);
         assert!(secp_pk.is_ok());

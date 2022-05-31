@@ -1,14 +1,14 @@
-use alloc::vec::Vec;
-use alloc::vec;
+use crate::base58;
+use crate::error;
+use crate::network::Network;
+use crate::network::Network::Mainnet;
+use crate::signature::Signature;
 use alloc::string::String;
+use alloc::vec;
+use alloc::vec::Vec;
 use bitcoin_hashes::{sha256, Hash as HashTrait};
 use core::fmt::{self, Write};
 use core::str::FromStr;
-use crate::error;
-use crate::network::Network;
-use crate::base58;
-use crate::network::Network::Mainnet;
-use crate::signature::Signature;
 use rand::Rng;
 
 /// A Secp256k1 private key
@@ -19,16 +19,19 @@ pub struct SecretKey {
     /// The network on which this key should be used
     pub network: Network,
     /// The actual Secp256k1 key
-    pub key: secp256k1::SecretKey,
+    pub key: libsecp256k1::SecretKey,
 }
 
 impl SecretKey {
     /// Creates a new random secret key. Requires compilation with the "rand" feature.
-    pub fn generate<R>(csprng: &mut R) -> Self where R: Rng {
+    pub fn generate<R>(csprng: &mut R) -> Self
+    where
+        R: Rng,
+    {
         Self {
             compressed: false,
             network: Mainnet,
-            key: secp256k1::SecretKey::random(csprng),
+            key: libsecp256k1::SecretKey::random(csprng),
         }
     }
 
@@ -71,19 +74,23 @@ impl SecretKey {
         let compressed = match data.len() {
             33 => false,
             34 => true,
-            _ => { return Err(base58::Error::InvalidLength(data.len()).into()); }
+            _ => {
+                return Err(base58::Error::InvalidLength(data.len()).into());
+            }
         };
 
         let network = match data[0] {
             128 => Network::Mainnet,
             239 => Network::Testnet,
-            x => { return Err(base58::Error::InvalidVersion(vec![x]).into()); }
+            x => {
+                return Err(base58::Error::InvalidVersion(vec![x]).into());
+            }
         };
 
         Ok(SecretKey {
             compressed,
             network,
-            key: secp256k1::SecretKey::parse_slice(&data[1..33])?,
+            key: libsecp256k1::SecretKey::parse_slice(&data[1..33])?,
         })
     }
 
@@ -92,13 +99,15 @@ impl SecretKey {
         let compressed: bool = match data.len() {
             33 => true,
             65 => false,
-            len => { return Err(base58::Error::InvalidLength(len).into()); }
+            len => {
+                return Err(base58::Error::InvalidLength(len).into());
+            }
         };
 
         Ok(SecretKey {
             compressed,
             network: Mainnet,
-            key: secp256k1::SecretKey::parse_slice(data)?,
+            key: libsecp256k1::SecretKey::parse_slice(data)?,
         })
     }
 
@@ -110,13 +119,10 @@ impl SecretKey {
 
     /// Sign a hash with secret key
     pub fn sign_hash(&self, hash: &[u8]) -> crate::Result<Signature> {
-        let msg = secp256k1::Message::parse_slice(&hash)?;
-        let (sig, recv_id) = secp256k1::sign(&msg, &self.key);
+        let msg = libsecp256k1::Message::parse_slice(&hash)?;
+        let (sig, recv_id) = libsecp256k1::sign(&msg, &self.key);
 
-        Ok(Signature {
-            recv_id,
-            sig,
-        })
+        Ok(Signature { recv_id, sig })
     }
 }
 
@@ -167,7 +173,10 @@ mod test {
         assert!(sk.is_ok());
         let sk = sk.unwrap();
         let pk = PublicKey::from(&sk);
-        assert_eq!(pk.to_string(), "EOS55KuLPN3u9qii2hEhJhkdQSdaVLVPTHdwdkEhszhhCWDthQtfi");
+        assert_eq!(
+            pk.to_string(),
+            "EOS55KuLPN3u9qii2hEhJhkdQSdaVLVPTHdwdkEhszhhCWDthQtfi"
+        );
         let sig = sk.sign("hello".as_bytes());
         assert!(sig.is_ok());
         let sig = sig.unwrap();
